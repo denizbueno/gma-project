@@ -1,0 +1,266 @@
+---
+title: "X_DataTables"
+output: html_document
+---
+
+########################################## 
+#                                        #
+#          GMA Project - Tables          #
+#                                        #
+########################################## 
+
+
+```{r}
+setwd("~/Desktop/Doutorado UFV/FIT 799 - Pesquisa/Scripts/GMA Scripts")
+load("MeansTable.RData")
+source("./0_Formulas.R")
+
+#packages
+library(clipr)
+library(tidyverse)
+library(kableExtra)
+```
+
+### Generate LaTeX table of variance components
+```{r}
+# Reshape data to wide format
+variance_fmtd <- variance %>%
+  mutate(Dataset = factor(Dataset,
+                         levels = levels(variance$Dataset),
+                         labels = c("Original", "Predicted"))) %>% 
+  mutate(Trait = factor(Trait,
+                         levels = levels(variance$Trait),
+                         labels = c(traits$name)))
+
+# Create LaTeX-friendly column names
+colnames(variance_fmtd) <- c(
+  "Trait",
+  "Dataset",
+  "$\\sigma^2_{env}$", 
+  "$\\sigma^2_{gF_{2}}$", 
+  "$\\sigma^2_{a}$", 
+  "$\\sigma^2_{d}$", 
+  "$h^2_{b}$",
+  "$h^2_{n}$"
+)
+
+
+latex_table <- kable(
+  variance_fmtd,
+  format = "latex",
+  booktabs = TRUE,
+  caption = "Variance components and heritability estimates across original and predicted datasets. Values represent variance components ($\\sigma^{2}$) and heritability estimates ($h^{2}$).",
+  label = "tab:variance_components",
+  row.names = FALSE,
+  escape = FALSE
+) %>% 
+collapse_rows(columns = 1, valign = "middle") %>% 
+  kable_styling(position = "center")
+
+# Print the LaTeX code of variance components
+clipr::write_clip(latex_table)
+```
+
+### Generate LaTeX table of GMA additive+dominance and epistatic model
+```{r}
+latex_table <- list()
+
+traitsEPI <- traits %>% filter(trait %in% c(
+  "total_leaf_sideshoot",
+  "leaf_angle",
+  "total_cluster_sideshoot",
+  "num_leaflets",
+  "leaf_area"
+  ))
+
+for (i in 1:dim(traitsEPI)[1]){
+  
+  gma_fmtd <- gma_list[[traitsEPI$trait[i]]]  
+  
+  gma_fmtd <- gma_fmtd  %>% 
+    select(!Trait) %>% 
+    mutate(Dataset = factor(Dataset,
+                            levels = levels(gma_fmtd$Dataset),
+                            labels = c("Original", "Predicted"))) %>% 
+    mutate(model = factor(model,
+                            levels = levels(gma_fmtd$model),
+                            labels = c(
+                              paste0("A+D ($", levels(gma_fmtd$model)[1], ")\\textsuperscript{1}$"),
+                                       "Epistatic",
+                              paste0("A+D ($", levels(gma_fmtd$model)[3], ")\\textsuperscript{1}$")
+                              ))) %>% 
+    mutate(parameters = factor(parameters,
+                            levels = levels(gma_fmtd$parameters),
+                            labels = c("$\\hat{a}$",
+                                       "$\\hat{d}$",
+                                       "$\\hat{m}$",
+                                       "$\\hat{aa}$",
+                                       "$\\hat{ad}$",
+                                       "$\\hat{dd}$"
+                                       )))
+  
+  colnames(gma_fmtd) <- c(
+    "Dataset",
+    "Model ($r^{2}$)",
+    "$\\hat{a_{i}}$", 
+    "Estimates", 
+    "$\\sigma^2_{\\hat{a_{i}}}$", 
+    "$\\sigma_{\\hat{a_{i}}}$", 
+    "$t$-test", 
+    "$df$", 
+    "$p$-value", 
+    "Sum of squares",
+    "$R^{2}$(\\%)"
+  )
+  
+  # Generate LaTeX table with booktabs formatting
+  latex_table[[i]] <- kable(
+    gma_fmtd,
+    align = "lllcccccccc",
+    valign = "[t]",
+    format = "latex",
+    booktabs = TRUE,
+    table.envir = "sidewaystable",
+    caption = paste0("Parameter ($\\hat{a_{i}}$) estimates for ", tolower(traitsEPI$name[i])," under additive-dominance (A+D) and epistatic models using original and predicted datasets. Values include estimates variance ($\\sigma^2_{\\hat{a_{i}}}$), standard deviation ($\\sigma_{\\hat{a_{i}}}$), significance levels, degrees of freedom ($df$), sum of squares, and relative parameter contributions ($R^{2}$) for each model."),
+    label = paste0(i+1, "gma:", traitsEPI$trait[i]),
+    row.names = FALSE,
+    escape = FALSE
+  ) %>% 
+    collapse_rows(columns = c(1,2), valign = "middle") %>% 
+    footnote(
+      number = c("Predictive ability of generation means with the A+D model.")
+      ) %>% 
+    kable_styling(position = "center")
+  
+}
+
+# Print the LaTeX code of GMA tables for additive+dominance and epistatic models
+clipr::write_clip(latex_table)
+```
+
+### Generate LaTeX table of GMA additive+dominance model
+```{r}
+latex_table <- list()
+
+traitsEPI <- traits %>% filter(trait %in% c(
+  "total_leaf_sideshoot",
+  "leaf_angle",
+  "total_cluster_sideshoot",
+  "num_leaflets",
+  "leaf_area"
+  ))
+
+traitsAD <- setdiff(traits, traitsEPI)
+
+for (i in 1:dim(traitsAD)[1]){
+  
+  gma_fmtd <- gma_list[[traitsAD$trait[i]]]  
+  
+  gma_fmtd <- gma_fmtd  %>% 
+    select(!Trait) %>% 
+    filter(model != "epi") %>% 
+    droplevels()
+  gma_fmtd <- gma_fmtd  %>% 
+    mutate(Dataset = factor(Dataset,
+                            levels = levels(gma_fmtd$Dataset),
+                            labels = c("Original", "Predicted"))) %>% 
+    mutate(model = factor(model,
+                          levels = levels(gma_fmtd$model),
+                          labels = c(
+                            paste0("A+D ($", levels(gma_fmtd$model)[1], ")\\textsuperscript{1}$"),
+                            paste0("A+D ($", levels(gma_fmtd$model)[2], ")\\textsuperscript{1}$")
+                          ))) %>% 
+    mutate(parameters = factor(parameters,
+                               levels = levels(gma_fmtd$parameters),
+                               labels = c("$\\hat{a}$",
+                                          "$\\hat{d}$",
+                                          "$\\hat{m}$"
+                               )))
+    
+  colnames(gma_fmtd) <- c(
+    "Dataset",
+    "Model ($r^{2}$)",
+    "$\\hat{a_{i}}$", 
+    "Estimates", 
+    "$\\sigma^2_{\\hat{a_{i}}}$", 
+    "$\\sigma_{\\hat{a_{i}}}$", 
+    "$t$-test", 
+    "$df$", 
+    "$p$-value", 
+    "Sum of squares",
+    "$R^{2}$(\\%)"
+  )
+  
+  # Generate LaTeX table with booktabs formatting
+  latex_table[[i]] <- kable(
+    gma_fmtd,
+    align = "lllcccccccc",
+    valign = "[t]",
+    format = "latex",
+    booktabs = TRUE,
+    # table.envir = "sidewaystable",
+    caption = paste0("Parameter ($\\hat{a_{i}}$) estimates for ", tolower(traitsAD$name[i])," under additive-dominance (A+D) models using original and predicted datasets. Values include estimates variance ($\\sigma^2_{\\hat{a_{i}}}$), standard deviation ($\\sigma_{\\hat{a_{i}}}$), significance levels, degrees of freedom ($df$), sum of squares, and relative parameter contributions ($R^{2}$) for each model."),
+    label = paste0(i+1, "gma:", traitsAD$trait[i]),
+    row.names = FALSE,
+    escape = FALSE
+  ) %>% 
+    collapse_rows(columns = c(1,2), valign = "middle") %>% 
+    footnote(
+      number = c("Predictive ability of generation means with the A+D model.")
+    ) %>% 
+    kable_styling(position = "center")
+  
+}
+
+
+# Print the LaTeX code of GMA tables for additive+dominance and epistatic models
+clipr::write_clip(latex_table)
+```
+##Figures labels
+#Variograms (individually)
+```{r eval=FALSE, include=FALSE}
+vario <- paste0("\\begin{figure}[htbp]
+  \\centering
+  \\includegraphics[width=1.0\\textwidth, angle=-90]{figs/vario_", traits$trait, ".eps}
+  \\caption{Variogram of ", tolower(traits$name), " using the autoregressive correlation residual structure and irrigation spatial covariate.}\\label{fig:vario_", traits$trait, "}
+\\end{figure}
+")
+clipr::write_clip(vario)
+```
+
+#Variograms 6x2 block
+```{r}
+lista <- list()
+
+n <- n+6
+
+traits$print <- paste0("    \\begin{subfigure}{0.45\\textwidth}
+       \\centering
+       \\includegraphics[width=\\linewidth, angle=-90]{figs/vario_", traits$trait,".eps}
+       \\caption{",traits$name,"}
+    \\end{subfigure}")
+
+lista[["beg"]] <- "\\begin{figure}[htbp]
+  \\centering\n"
+
+for(j in (n):(n+5)){
+  lista[[paste0(j,1)]] <- traits$print[j]
+  if (j%%2 == 1){
+    lista[[paste0(j,2)]] <- "    \\hfill"
+  } else {
+    if (j == (n+5)){
+      
+    } else {
+      lista[[paste0(j,2)]] <- "\n"
+    }
+  }
+}
+
+lista[["end"]] <- "  \\caption{Variograms of trait measurements using an autoregressive residual correlation structure and irrigation spatial covariate, showing how variance changes with distance. The $z$-axis represents the variance across different distances (lag) based on row (line) and plant position (plant n°).}
+  \\label{fig:vario_onetosix}
+\\end{figure}"
+
+
+clipr::write_clip(paste0(lista))
+```
+
