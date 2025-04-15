@@ -19,8 +19,10 @@ library(tidyverse)
 gma_list <- list()
 r2AD_list <- list()
 
-for (trait in traits$trait){
+for (i in 1:nrow(traits)){
   
+  trait <- traits$trait[i]
+  abrv <- traits$abrv[i]
   gma <- list()
   
   for (v in c("rawvar", "predvar")) {
@@ -79,7 +81,7 @@ for (trait in traits$trait){
     sq <- w^2/diag(te)
     r2 <- ((w^2/diag(te))*100)/sum(w^2/diag(te))
     
-    gmaAD <- data.frame(cbind(model = as.factor(round(r2AD*100,2)), 
+    gmaAD <- data.frame(cbind(model = as.factor(round(r2AD*100,3)), 
                               gmaAD,
                               SQ = sq,
                               R2 = r2))
@@ -150,14 +152,14 @@ for (trait in traits$trait){
     round_digits <- c(3, 3, 3, 3, 0, 4, 3, 1)
     
     # Loop over columns 2 to 9
-    for(i in seq_along(round_digits)) {
-      col_index <- i + 2  # because our columns start at 3
-      gmaAD[, col_index] <- round(gmaAD[, col_index], round_digits[i])
-      gmaE[, col_index] <- round(gmaE[, col_index], round_digits[i])
+    for(j in seq_along(round_digits)) {
+      col_index <- j + 2  # because our columns start at 3
+      gmaAD[, col_index] <- round(gmaAD[, col_index], round_digits[j])
+      gmaE[, col_index] <- round(gmaE[, col_index], round_digits[j])
     }
     
     gma[[v]] <- data.frame(
-      Trait = as.factor(trait),
+      Trait = as.factor(abrv),
       Dataset = as.factor(v),
       rbind(
         gmaAD,
@@ -174,26 +176,24 @@ raw <- do.call(rbind.data.frame, r2AD_list[startsWith(names(r2AD_list), "raw")])
 pred <- do.call(rbind.data.frame, r2AD_list[startsWith(names(r2AD_list), "pred")])
 r2AD <- do.call(rbind.data.frame, r2AD_list)
 
-delta <- pred %>% 
-  bind_cols(raw, delta = pred - raw) %>%
-  rownames_to_column() %>% 
-  `colnames<-`(c("trait", "pred","raw","delta")) %>% 
+delta <- pred |> 
+  bind_cols(raw, delta = pred - raw) |> 
+  rownames_to_column() |> 
+  setNames(c("trait", "pred","raw","delta")) |> 
   mutate(trait = gsub("predvar_", "", trait))
 
-r2AD <- do.call(rbind.data.frame, r2AD_list) %>%
-  rownames_to_column() %>% 
+r2AD <- do.call(rbind.data.frame, r2AD_list) |>
+  rownames_to_column() |> 
   separate(
     col = rowname,                   # Column to split
     into = c("Dataset", "Trait"),    # New column names
     sep = "_",                       # Split on ":"
     extra = "merge",                 # Merge after
     remove = TRUE,
-    fill = "right") %>%              # Keep original "id" col
-  # mutate(rowname = gsub("predvar_", "", rowname)) %>% 
-  # mutate(rowname = gsub("rawvar_", "", rowname)) %>% 
-  right_join(variance, by = c("Trait", "Dataset")) %>% 
-  rename(r2 = "V1") %>% 
-  relocate(Trait) %>% 
+    fill = "right") |>              # Keep original "id" col
+  right_join(variance, by = c("Trait", "Dataset")) |> 
+  rename(r2 = "V1") |> 
+  relocate(Trait) |> 
   relocate(r2, .after = h2n)
 
 delta_list <- list()
@@ -204,14 +204,13 @@ for (trait in traits$trait){
   raw <- dgma[dgma$Dataset == "rawvar",5:12]
   
   d <- pred - raw
-  dgma <- dgma %>% 
-    filter(Dataset == "predvar") %>% 
-    select("Trait", "model", "parameters") %>% 
+  dgma <- dgma |> 
+    filter(Dataset == "predvar") |> 
+    select("Trait", "model", "parameters") |> 
     bind_cols(d)
   
   delta_list[[trait]] <- dgma
 }
-
 
 add_object_to_rda(gma_list, "./MeansTable.RData", overwrite = TRUE)
 add_object_to_rda(r2AD_list, "./MeansTable.RData", overwrite = TRUE)

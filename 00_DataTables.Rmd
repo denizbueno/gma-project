@@ -24,10 +24,10 @@ library(kableExtra)
 ### Generate LaTeX table of variance components
 ```{r}
 # Reshape data to wide format
-variance_fmtd <- variance %>%
+variance_fmtd <- variance |>
   mutate(Dataset = factor(Dataset,
                          levels = levels(variance$Dataset),
-                         labels = c("Original", "Predicted"))) %>% 
+                         labels = c("Original", "Predicted"))) |> 
   mutate(Trait = factor(Trait,
                          levels = levels(variance$Trait),
                          labels = c(traits$name)))
@@ -53,8 +53,8 @@ latex_table <- kable(
   label = "tab:variance_components",
   row.names = FALSE,
   escape = FALSE
-) %>% 
-collapse_rows(columns = 1, valign = "middle") %>% 
+) |> 
+collapse_rows(columns = 1, valign = "middle") |> 
   kable_styling(position = "center")
 
 # Print the LaTeX code of variance components
@@ -65,30 +65,36 @@ clipr::write_clip(latex_table)
 ```{r}
 latex_table <- list()
 
-traitsEPI <- traits %>% filter(trait %in% c(
-  "total_leaf_sideshoot",
-  "leaf_angle",
-  "total_cluster_sideshoot",
-  "num_leaflets",
-  "leaf_area"
+traitsEPI <- traits |> 
+  filter(trait %in% c(
+    "num_sideshoot",
+    "total_leaf_sideshoot",
+    "total_cluster_sideshoot",
+    "leaf_angle"
   ))
 
-for (i in 1:dim(traitsEPI)[1]){
+# traitsEPI <- traits |> filter(trait %in% c(
+#   "total_leaf_sideshoot",
+#   "internode_length",
+#   "lai"    
+#   ))
+
+for (i in 1:nrow(traitsEPI)){
   
   gma_fmtd <- gma_list[[traitsEPI$trait[i]]]  
   
-  gma_fmtd <- gma_fmtd  %>% 
-    select(!Trait) %>% 
+  gma_fmtd <- gma_fmtd  |> 
+    select(!Trait) |> 
     mutate(Dataset = factor(Dataset,
                             levels = levels(gma_fmtd$Dataset),
-                            labels = c("Original", "Predicted"))) %>% 
+                            labels = c("Original", "Predicted"))) |> 
     mutate(model = factor(model,
                             levels = levels(gma_fmtd$model),
                             labels = c(
                               paste0("A+D ($", levels(gma_fmtd$model)[1], ")\\textsuperscript{1}$"),
                                        "Epistatic",
                               paste0("A+D ($", levels(gma_fmtd$model)[3], ")\\textsuperscript{1}$")
-                              ))) %>% 
+                              ))) |> 
     mutate(parameters = factor(parameters,
                             levels = levels(gma_fmtd$parameters),
                             labels = c("$\\hat{a}$",
@@ -125,11 +131,11 @@ for (i in 1:dim(traitsEPI)[1]){
     label = paste0(i+1, "gma:", traitsEPI$trait[i]),
     row.names = FALSE,
     escape = FALSE
-  ) %>% 
-    collapse_rows(columns = c(1,2), valign = "middle") %>% 
+  ) |> 
+    collapse_rows(columns = c(1,2), valign = "middle") |> 
     footnote(
       number = c("Predictive ability of generation means with the A+D model.")
-      ) %>% 
+      ) |> 
     kable_styling(position = "center")
   
 }
@@ -142,34 +148,33 @@ clipr::write_clip(latex_table)
 ```{r}
 latex_table <- list()
 
-traitsEPI <- traits %>% filter(trait %in% c(
-  "total_leaf_sideshoot",
-  "leaf_angle",
-  "total_cluster_sideshoot",
-  "num_leaflets",
-  "leaf_area"
+traitsEPI <- traits |> filter(trait %in% c(
+ "num_sideshoot",
+ "total_leaf_sideshoot",
+ "total_cluster_sideshoot",
+ "leaf_angle"
   ))
 
 traitsAD <- setdiff(traits, traitsEPI)
 
-for (i in 1:dim(traitsAD)[1]){
+for (i in 1:nrow(traitsAD)){
   
   gma_fmtd <- gma_list[[traitsAD$trait[i]]]  
   
-  gma_fmtd <- gma_fmtd  %>% 
-    select(!Trait) %>% 
-    filter(model != "epi") %>% 
+  gma_fmtd <- gma_fmtd  |> 
+    select(!Trait) |> 
+    filter(model != "epi") |> 
     droplevels()
-  gma_fmtd <- gma_fmtd  %>% 
+  gma_fmtd <- gma_fmtd  |> 
     mutate(Dataset = factor(Dataset,
                             levels = levels(gma_fmtd$Dataset),
-                            labels = c("Original", "Predicted"))) %>% 
+                            labels = c("Original", "Predicted"))) |> 
     mutate(model = factor(model,
                           levels = levels(gma_fmtd$model),
                           labels = c(
                             paste0("A+D ($", levels(gma_fmtd$model)[1], ")\\textsuperscript{1}$"),
                             paste0("A+D ($", levels(gma_fmtd$model)[2], ")\\textsuperscript{1}$")
-                          ))) %>% 
+                          ))) |> 
     mutate(parameters = factor(parameters,
                                levels = levels(gma_fmtd$parameters),
                                labels = c("$\\hat{a}$",
@@ -203,11 +208,11 @@ for (i in 1:dim(traitsAD)[1]){
     label = paste0(i+1, "gma:", traitsAD$trait[i]),
     row.names = FALSE,
     escape = FALSE
-  ) %>% 
-    collapse_rows(columns = c(1,2), valign = "middle") %>% 
+  ) |> 
+    collapse_rows(columns = c(1,2), valign = "middle") |> 
     footnote(
       number = c("Predictive ability of generation means with the A+D model.")
-    ) %>% 
+    ) |> 
     kable_styling(position = "center")
   
 }

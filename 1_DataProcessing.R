@@ -25,50 +25,50 @@ df_raw <- read.csv("Analise_de_Geracao-TomateAnao-REV48-DENIZ-PC - ColetaDados.c
 ##  Raw data filtering
 df_irr <- data.frame(df_irr[1:248,1:3])
 df_raw <- as_tibble(df_raw[1:600,1:198])
-df_clean_vars <- df_raw %>% 
-  select_if(~ !all(is.na(.))) %>% 
+df_clean_vars <- df_raw |> 
+  select_if(~ !all(is.na(.))) |> 
   arrange(Ind)
 
 ##  Setting index data.frame
 df_names <- cbind(df_clean_vars[,6:10], rep(seq(1,31, length.out = 75),8))
 names(df_names) <- c("ind", "generation", "gen_color", "line", "plant_num", "plant_pos")
 
-df_names <- df_names %>%
-  as_tibble() %>% 
-  mutate(across(c(ind:plant_num), as.factor)) %>% 
+df_names <- df_names |>
+  as_tibble() |> 
+  mutate(across(c(ind:plant_num), as.factor)) |> 
   mutate(generation = factor(df_names$gen_color,
                              # levels = c("VERDE", "ROSA", "ROXO", "AMARELO", "VERMELHO", "AZUL"),
                              # labels = c("F2", "BC1", "BC2", "P1", "F1", "P2")))
                              levels = c("AMARELO", "AZUL", "VERMELHO", "VERDE", "ROSA", "ROXO"),
                              labels = c("P1", "P2", "F1", "F2", "BC1", "BC2")))
 
-df_names <- df_names %>%
+df_names <- df_names |>
   mutate(dam = factor(df_names$generation,
                       levels = c("F2", "BC1", "BC2", "P1", "F1", "P2"),
-                      labels = c("F1F0", "F1F0", "P2F9", "P1F9", "P2F9", "P2F9"))) %>%
+                      labels = c("F1F0", "F1F0", "P2F9", "P1F9", "P2F9", "P2F9"))) |>
   mutate(sire = factor(df_names$generation,
                        levels = c("F2", "BC1", "BC2", "P1", "F1", "P2"),
-                       labels = c("F1F0", "P1F9", "F1F0", "P1F9", "P1F9", "P2F9"))) %>%
+                       labels = c("F1F0", "P1F9", "F1F0", "P1F9", "P1F9", "P2F9"))) |>
   mutate(geno = factor(if_else(df_names$generation %in% c("F1", "P1", "P2"),
                                paste0(df_names$generation),
-                               paste0(df_names$generation, "-", df_names$ind)))) %>% 
+                               paste0(df_names$generation, "-", df_names$ind)))) |> 
   relocate(c(generation, geno, dam, sire), .after = gen_color)
 
-df_names <- df_names %>% 
-  mutate(rep = ave(seq_along(df_names$geno), df_names$geno, FUN = seq_along)) %>% 
+df_names <- df_names |> 
+  mutate(rep = ave(seq_along(df_names$geno), df_names$geno, FUN = seq_along)) |> 
   relocate(c(rep), .after = sire)
 
 ##  Irrigation data interpolation
 # Setting grid
-grid <- df_names %>%
-  select(ind, line, plant_pos) %>% 
+grid <- df_names |>
+  select(ind, line, plant_pos) |> 
   mutate(line = as.numeric(line))
 coordinates(grid) <- ~ line + plant_pos
 gridded(grid) = TRUE
 
 # Interpolating
-irrig <- df_irr %>% 
-  mutate(Valor = (0.12*(as.numeric(Valor))+1))
+irrig <- df_irr |> 
+  mutate(Valor = (0.12*(as.numeric(Valor))^2+1))
 coordinates(irrig) <- ~ Linha + Medida
 irrig.idw <- idw(Valor ~ 1, irrig, grid, idp=1, nmax=2)
 
@@ -76,14 +76,14 @@ spplot(irrig.idw, zcol = "var1.pred")
 
 # Binding irrigation covariate to data.frame
 df_names <- cbind(df_names,
-                  irr_flw = irrig.idw$var1.pred)
+                  irr_flw = (irrig.idw$var1.pred - mean(irrig.idw$var1.pred)))
 
 ##  Phenotypic data processing
 # Main phenotypic variables df
 df_phenoMain <- df_clean_vars[,c(16,25,30,35,36,85,89,91:107)]
-df_phenoMain <- df_phenoMain %>%
-  as_tibble() %>%
-  mutate(across(where(is.character), ~ as.numeric(gsub("N/A", "", .)))) %>%
+df_phenoMain <- df_phenoMain |>
+  as_tibble() |>
+  mutate(across(where(is.character), ~ as.numeric(gsub("N/A", "", .)))) |>
   mutate(across(c(1:length(df_phenoMain)), as.numeric))
 names(df_phenoMain) <- c("num_sideshoot",
                          "total_leaf_sideshoot",
@@ -109,20 +109,20 @@ names(df_phenoMain) <- c("num_sideshoot",
                          "three_internode_length",
                          "leaf_angle",
                          "leaflet_angle")
-df_phenoMain <- cbind(df_names, df_phenoMain) %>% 
+df_phenoMain <- cbind(df_names, df_phenoMain) |> 
   arrange(line, plant_num)
 
 #All phenotypic variables df
 df_pheno <- df_clean_vars[,c(16:36,84:107)]
-df_pheno <- df_pheno %>%
-  as_tibble() %>%
+df_pheno <- df_pheno |>
+  as_tibble() |>
   mutate(Acamamento = case_when(
     Acamamento == "S" ~ 1,
-    Acamamento == "N" ~ 0)) %>% 
+    Acamamento == "N" ~ 0)) |> 
   mutate(Indeterminada = case_when(
     Indeterminada == "S" ~ 1,
-    Indeterminada == "N" ~ 0)) %>% 
-  mutate(across(where(is.character), ~ as.numeric(na_if(., "N/A")))) %>%
+    Indeterminada == "N" ~ 0)) |> 
+  mutate(across(where(is.character), ~ as.numeric(na_if(., "N/A")))) |>
   mutate(across(c(1:length(df_pheno)), as.numeric))
 names(df_pheno) <- c("num_sideshoot",
                      "desuckering_29_02_2024",
@@ -170,13 +170,13 @@ names(df_pheno) <- c("num_sideshoot",
                      "leaf_angle",
                      "leaflet_angle")
 
-df_pheno <- cbind(df_names, df_pheno) %>% 
-  arrange(line, plant_num) %>%
-  mutate(across(total_leaf_sideshoot, ~ replace_na(., 0))) %>% 
-  mutate(across(total_cluster_sideshoot, ~ replace_na(., 0))) %>% 
-  mutate(internode_length = three_internode_length/3) %>% 
-  mutate(height_to_det = height_to_det/100) %>% 
-  mutate(leaf_area = (0.347*(leaf_length_cm*side_leaflet_length_cm*2) - 10.7)/100) %>% 
+df_pheno <- cbind(df_names, df_pheno) |> 
+  arrange(line, plant_num) |>
+  mutate(across(total_leaf_sideshoot, ~ replace_na(., 0))) |> 
+  mutate(across(total_cluster_sideshoot, ~ replace_na(., 0))) |> 
+  mutate(internode_length = three_internode_length/3) |> 
+  mutate(height_to_det = height_to_det/100) |> 
+  mutate(leaf_area = (0.347*(leaf_length_cm*side_leaflet_length_cm*2) - 10.7)/100) |> 
   #Blanco, F. F., & Folegatti, M. V. (2003).
   # A new method for estimating the leaf 
   # area index of cucumberand tomato plants.
@@ -260,7 +260,7 @@ names(df_dna) <- c("plate",
                    "260-280_ratio",
                    "260-230_ratio",
                    "electrophoresis_gel_quality")
-df_dna <- df_dna %>%
+df_dna <- df_dna |>
   mutate(electrophoresis_gel_quality = factor(electrophoresis_gel_quality,
                                               levels = c("Ótimo", "Bom", "Fraco", "", "Ruim"),
                                               labels = c("Great", "Good", "Weak", NA, "Bad")))
@@ -269,50 +269,57 @@ df_dna <- cbind(df_names, df_dna)
 #Stress variables df
 df_stress <- cbind(df_names, df_clean_vars[,37:83])
 
+# traits <- tribble(
+#   ~abrv,   ~trait,                                 ~name,
+#   "htd",   "height_to_det",                        "Height to last leaf ($m$)",
+#   "nss",   "num_sideshoot",                        "N° of side shoots",
+#   "tlss",  "total_leaf_sideshoot",                 "N° of leaf side shoots",
+#   "tcss",  "total_cluster_sideshoot",              "N° of cluster side shoots",
+#   "ssl",   "sideshoot_length",                     "Side shoot length ($cm$)",
+#   "hyd",   "hypocotyl_diam",                       "Hypocotyl diameter ($mm$)",
+#   "nctd",  "num_clusters_to_det",                  "N° of clusters to last leaf",
+#   "nltfc", "num_leaves_to_firstcluster",           "N° of leaves up to first cluster",
+#   "nlafc", "num_leaves_from_firstcluster_to_det",  "N° of leaves after first cluster",
+#   "nll",   "num_leaflets",                         "N° of Leaflets",
+#   "inl",   "internode_length",                     "Internode length ($cm$)",
+#   "la",    "leaf_area",                            "Leaf area ($dm^{2}$)",
+#   "lai",   "lai",                                  "Leaf Area Index (LAI)",
+#   "lag",   "leaf_angle",                           "Leaf angle ($^{\\circ}$)",
+#   "llag",  "leaflet_angle",                        "Leaflet angle ($^{\\circ}$)"
+# )
+# 
+# 
+# #family link function
+# fam <- tribble(
+#   ~abrv,    ~fam,
+#   "htd",    2,
+#   "nss",    3,
+#   "tlss",   1,
+#   "tcss",   2,
+#   "ssl",    1,
+#   "hyd",    1,
+#   "nctd",   4,
+#   "nltfc",  3,
+#   "nlafc",  4,
+#   "nll",    4,
+#   "inl",    1,
+#   "la",     1,
+#   "lai",    2,
+#   "lag",    1,
+#   "llag",   2
+# )
+# 
+# traits <- traits |> 
+#   left_join(fam, by = "abrv")
 
-trait <- c(
-  "height_to_det",
-  "num_sideshoot",
-  "total_leaf_sideshoot",
-  "total_cluster_sideshoot",
-  "sideshoot_length",
-  "hypocotyl_diam",
-  "num_clusters_to_det",
-  "num_leaves_to_firstcluster",
-  "num_leaves_from_firstcluster_to_det",
-  "num_leaflets",
-  "internode_length",
-  "leaf_area",
-  "lai",
-  "leaf_angle",
-  "leaflet_angle"
-)
+traits <- read.csv("traitsGLMM.csv", header = T)
 
-name <- c(
-  "Height to last leaf ($m$)",
-  "N° of side shoots",
-  "N° of leaf side shoots",
-  "N° of cluster side shoots",
-  "Side shoot length ($cm$)",
-  "Hypocotyl diameter ($mm$)",
-  "N° of clusters to last leaf",
-  "N° of leaves up to first cluster",
-  "N° of leaves after first cluster",
-  "N° of Leaflets",
-  "Internode length ($cm$)",
-  "Leaf area ($dm^{2}$)",
-  "Leaf Area Index (LAI)",
-  "Leaf angle ($^{\\circ}$)",
-  "Leaflet angle ($^{\\circ}$)"
-)
-
-traits <- data.frame(cbind(trait, name))
-
-x <- acomp(df_pheno[traits[,"trait"]])
+x <- acomp(df_pheno |> select(all_of(traits$trait)))
+# x <- df_pheno |> select(all_of(trait))
 pcx <- princomp(x)
 sum(pcx$sdev[1:2]^2)/sum(pcx$sdev^2)
 
-pheno_fa <- factanal(na.omit(df_pheno[traits[,"trait"]]+0.00001), factors = 7)
+pheno_fa <- factanal(na.omit(df_pheno |> select(all_of(traits$trait))+0.00001), factors = 7)
 pheno_fa
 
 save(df_names, df_pheno, traits, file = "./PhenotypicData.RData")

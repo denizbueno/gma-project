@@ -6,9 +6,9 @@ output: html_document
 ---
 
 ######################################### 
-#                                       # 
-#    GMA Project - Data Visualization   #
 #                                       #
+#    GMA Project - Data Visualization   #
+#                                       # 
 ######################################### 
 
 ```{r setup, include=FALSE}
@@ -16,6 +16,7 @@ knitr::opts_chunk$set(include = FALSE)
 setwd("~/Desktop/Doutorado UFV/FIT 799 - Pesquisa/Scripts/GMA Scripts")
 load("./PhenotypicData.RData")
 load("./PlotData.RData")
+load("./modelsGLMMs.RData")
 
 df <- df_pheno
 par(mfrow=c(1,1))
@@ -26,6 +27,8 @@ library(igraph)
 library(compositions)
 library(MASS)
 library(lattice)
+library(latex2exp)
+library(ggpubr)
 library(tidyverse)
 ```
 
@@ -56,116 +59,311 @@ spplot(irrig.idw, zcol = "var1.pred")
 # Correlation of Irrigation Flow and Trait
 
 ```{r}
-xyplot(as.formula(paste("irr_flw ~ ", trait)), data = df,
-       main = paste("Correlation of Irrigation Flow and ", trait),
-       group = generation, 
-       type = "p",
-       alpha = 0.6,
-       auto.key = list(space = "right"),  # Add legend automatically
-       par.settings = list(superpose.symbol = list(
-         pch = c(21, 22, 23, 24, 25),  # Filled symbols: circle, square, diamond, triangle, down-triangle
-         col = "black",  # Distinct colors
-         # fill = rainbow(length(unique(df$generation)))  # Distinct colors
-         fill = c("yellow", "blue", "red", "green", "hotpink", "purple1")  # Distinct colors
-         # cex = 1.5   # Increase point size
-       ))
-      )
+# Define the colors for each generation
+colors <- c("yellow", "skyblue", "red", "lightgreen", "hotpink", "purple1")  # Distinct colors
+df <- df_pheno
+
+# Iterate over each trait to create plots
+for (i in 1:nrow(traits)) {
+  # Create the scatter plot with points colored by generation and a single regression line
+  p <- ggplot(df, aes_string(x = traits$trait[i], y = "irr_flw"), na.rm = TRUE) +
+    geom_point(aes(fill = generation), shape = 23, alpha = 0.6, size = 2) +
+    geom_smooth(method = "glm", se = TRUE) +
+    scale_fill_manual(values = colors, name = "Gen") +
+    labs(
+      x = TeX(traits$name[i]),
+      y = TeX("Irrigation Flow ($mm.h^{-1}$)"),
+      # title = TeX(paste0("Scatter plot of ", tolower(traits$name[i]), " vs irrigation flow"))
+    ) +
+    # theme_minimal() +
+    theme(legend.position = "right") +
+    # scale_x_log10() +
+    stat_cor(aes(label = ..rr.label..), 
+             label.x.npc = "left", label.y.npc = "top", size = 4,
+             digits = 3)  # Adjust label.x and label.y as needed
+  
+  # Print the plot
+  suppressWarnings(print(p))
+}
+```
+
+```{r eval=FALSE, include=FALSE}
+for (i in 1:nrow(traits)){
+  xyplot(as.formula(paste("irr_flw ~ ", traits$trait[i])), data = df,
+         main = paste("Correlation of Irrigation Flow and ", traits$name[i]),
+         group = generation, 
+         type = "p",
+         alpha = 0.6,
+         auto.key = list(space = "right"),  # Add legend automatically
+         par.settings = list(superpose.symbol = list(
+           pch = c(21, 22, 23, 24, 25),  # Filled symbols: circle, square, diamond, triangle, down-triangle
+           col = "black",  # Distinct colors
+           # fill = rainbow(length(unique(df$generation)))  # Distinct colors
+           fill = c("yellow", "blue", "red", "green", "hotpink", "purple1")  # Distinct colors
+           # cex = 1.5   # Increase point size
+         ))
+         )
+}
 ```
 
 # Box-Cox of trait data
 
 ```{r}
-boxcox(as.formula(paste0(trait, " ~ 1")),
-       data = na.omit(df[trait])+0.0001,
-       xlab = paste0("lambda ", trait))
-# detach("package:MASS", unload = TRUE)
+for (i in 1:nrow(traits)){
+  
+  boxcox(as.formula(paste0(traits$trait[i], " ~ 1")),
+         data = na.omit(df[traits$trait[i]])+0.0001,
+         xlab = TeX(paste0("Lambda \\lambda ", traits$name[i]))
+         )
+}
+detach("package:compositions", unload = TRUE)
+detach("package:MASS", unload = TRUE)
 ```
 
 # Boxlot of Means and Std Errors
+
+```{r}
+colors <- c("yellow", "skyblue", "red", "lightgreen", "hotpink", "purple1")
+
+for (i in 1:nrow(traits)){
+# for (i in 4){
+  
+  fam <-switch(traits$fam[i],
+             "asr_gaussian(link = 'identity', dispersion = NA)",
+             "asr_gaussian(link = 'log', dispersion = NA)",
+             "asr_poisson(link = 'identity', dispersion = NA)",
+             "asr_poisson(link = 'log', dispersion = NA)",
+             "asr_poisson(link = 'sqrt', dispersion = NA)")
+
+  asr <- asremls[[paste0("tom2_", traits$trait[i], ".asr")]]
+  
+  pred <- summary(asr, coef = TRUE)$coef.fixed +
+    summary(asr, coef = TRUE)$coef.fixed["(Intercept)","solution"]
+  
+  pred <- pred[startsWith(rownames(pred), "geno") &
+                 !endsWith(rownames(pred), ":irr_flw"), ]
+  
+  pred <- data.frame(pred)  |> 
+    rownames_to_column("id") |>  # Convert rownames to a column named "id"
+    separate(
+      col = id,                       # Column to split
+      into = c("generation", "ind"),  # New column names
+      sep = "-",                      # Split on ":"
+      remove = TRUE,
+      fill = "right") |>              # Keep original "id" column (set to TRUE to drop it)
+    mutate(generation = str_remove(generation, "^geno_")) |> 
+    mutate(generation = factor(generation,
+                               levels = c("P1","P2","F1","F2","BC1","BC2"))) |> 
+    mutate(solution = ifelse(is.na(std.error), NA, solution))
+
+  predseg <- pred |> filter(!is.na(ind))
+  predpar <- pred |> filter(is.na(ind)) |> select(-ind)
+
+  res <- data.frame(res = residuals(asr))
+
+  # Perform two left joins and coalesce the results
+  df <- df_pheno |>
+    select(c(names(df_names), traits$trait[i])) |> 
+    left_join(predseg, by = c("generation", "ind")) |>
+    left_join(predpar, by = "generation", suffix = c("", "_gen")) |> 
+    mutate(solution = coalesce(solution, solution_gen)) |>
+    bind_cols(res) |>
+    mutate(solution = if_else(
+      generation %in% c("P1", "P2", "F1"),
+      solution + res,
+      solution))
+    
+  df <- if (traits$fam[i] %in% c(2,4)){
+    df |> mutate(solution = exp(solution))
+    } else {  df  # no transformation
+    }
+  
+  df <- df |> 
+    select(c(names(df_names), traits$trait[i], solution)) |> 
+    pivot_longer(c(traits$trait[i], solution)) |> 
+    mutate(name = factor(name,
+                         levels = c(traits$trait[i], "solution"),
+                         labels = c("Original", "Predicted")))
+
+# Basic box plot
+  p <- ggplot(df, aes(x = generation, y = value, fill = generation, color = name), na.rm = TRUE) +
+    geom_boxplot(alpha = 0.6, position = position_dodge(0.9)) +
+    # stat_summary(aes(fill = name), fun.y=mean, geom="point", shape=23, size=4) +
+    scale_fill_manual(values = colors) +
+    scale_color_manual(values = c("black", "darkgrey")) +
+    labs(
+      title = TeX(traits$name[i]),
+      color = "Dataset",
+      fill = "Generation",
+      x = NULL,
+      y = NULL
+      # y = TeX(traits$name[i])
+    ) +
+    # theme_minimal() +
+    scale_x_discrete(limits=c("BC2","BC1","F2","F1","P2","P1")) +
+    theme(
+      axis.text.y = element_blank(),  # Remove x-axis tick labels
+      axis.ticks.y = element_blank()  # Remove x-axis ticks
+    ) +
+    coord_flip() 
+
+  suppressWarnings(print(p))
+}
+```
 
 ```{r}
 # colors <- rainbow(length(levels(df$generation)))  # Generate colors for each group
 colors <- c("yellow", "blue", "red", "green", "hotpink", "purple1")  # Generate colors for each group
 
 plot(df$generation, df[[trait]],
-     main = paste0("Boxplot of ", trait, " by generation"),
+     # main = paste0("Boxplot of ", trait, " by generation"),
+     main = "",
      xlab = "Genotype",
      ylab = trait)
 ```
 
 ```{r}
-# Calculate densities and find max density for ylim adjustment
-densities <- lapply(split(df[[trait]], df$generation), density, na.rm = TRUE)
-max_density <- max(sapply(densities, function(d) max(d$y)))
+# Iterate over each trait to create histograms with normal distribution curves
+for (i in 1:nrow(traits)) {
+  trait_var <- traits$trait[i]  # Current trait variable name
+  trait_name <- traits$name[i]  # Descriptive name for the current trait
+  
+  # Create the plot
+  p <- ggplot(df, aes_string(x = trait_var)) +
+    geom_histogram(aes(y = ..density..),
+                   binwidth = 1, 
+                   fill = "lightgray", 
+                   color = "white", 
+                   na.rm = TRUE) +
+    geom_density(aes(y = ..density..),
+                 color = "blue",
+                 lwd = 1,
+                 na.rm = TRUE) +
+    facet_wrap(~generation, ncol = 1, scales = "free_y") +
+    labs(
+      title = paste("Distribution of", trait_name, "by Generation"),
+      x = trait_name,
+      y = "Density"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "top")
+  
+  # Display the plot
+  print(p)
+}
+```
 
-# Create an empty histogram with adjusted ylim
-
-hist(df[[trait]], 
-     main = paste0("Normal fit of ", trait, " by generation"), 
-     xlab = trait, 
-     ylab = "Density", 
-     freq = FALSE,             # Plot density instead of counts
-     col = "lightgray",        # Light background for clarity
-     border = "white",         # Remove bar borders
-     ylim = c(0, max_density + 0.025))  # Set ylim based on max density
-
-# Add legend
-legend("topright", legend = levels(df$generation), col = colors, lwd = 2, title = "generation")
-
-# Add normal distribution fit lines
-mean_val <- mean(df[[trait]], na.rm = TRUE)    # Mean of the group
-sd_val <- sd(df[[trait]], na.rm = TRUE)        # Standard deviation of the group
-
-curve(dnorm(x, mean = mean_val, sd = sd_val),  # Normal curve
-      lwd = 2, add = TRUE)
-
-for (j in levels(df$generation)) {
-  group_data <- df[[trait]][df$generation == j]
-  mean_val <- mean(group_data, na.rm = TRUE)    # Mean of the group
-  sd_val <- sd(group_data, na.rm = TRUE)        # Standard deviation of the group
+```{r}
+for (i in 1:nrow(traits)){
+    
+  # Calculate densities and find max density for ylim adjustment
+  densities <- lapply(split(df[[traits$trait[i]]], df$generation), density, na.rm = TRUE)
+  max_density <- max(sapply(densities, function(d) max(d$y)))
+  
+  # Create an empty histogram with adjusted ylim
+  
+  hist(df[[traits$trait[i]]], 
+       # main = paste0("Normal fit of ", tolower(traits$name[i]), " by generation"), 
+       # xlab = traits$name[i], 
+       main = "",
+       xlab = "",
+       ylab = "Density", 
+       freq = FALSE,             # Plot density instead of counts
+       col = "lightgray",        # Light background for clarity
+       border = "white",         # Remove bar borders
+       ylim = c(0, max_density + 0.025))  # Set ylim based on max density
+  
+  # Add legend
+  # legend("topright", legend = levels(df$generation), col = colors, lwd = 2, title = "Generation")
+  
+  # Add normal distribution fit lines
+  mean_val <- mean(df[[traits$trait[i]]], na.rm = TRUE)    # Mean of the group
+  sd_val <- sd(df[[traits$trait[i]]], na.rm = TRUE)        # Standard deviation of the group
   
   curve(dnorm(x, mean = mean_val, sd = sd_val),  # Normal curve
-        col = colors[which(levels(df$generation) == j)],
         lwd = 2, add = TRUE)
+  
+  for (j in levels(df$generation)) {
+    group_data <- df[[traits$trait[i]]][df$generation == j]
+    mean_val <- mean(group_data, na.rm = TRUE)    # Mean of the group
+    sd_val <- sd(group_data, na.rm = TRUE)        # Standard deviation of the group
+    
+    curve(dnorm(x, mean = mean_val, sd = sd_val),  # Normal curve
+          col = colors[which(levels(df$generation) == j)],
+          lwd = 2, add = TRUE)
+  }
+  
+  # Add legend
+  legend("topright", legend = levels(df$generation), col = colors, lwd = 2, title = "Generation")
 }
-
-# Add legend
-legend("topright", legend = levels(df$generation), col = colors, lwd = 2, title = "generation")
 ```
 
-##ASReml Outputs #Residuals Model 1
+##ASReml Outputs
+
+#Residuals Model
 
 ```{r}
-plot(asremls[[paste0("tom1_",trait,".asr")]])
-```
-
-#Variograms Model 1
-
-```{r}
-plot(varioGram(asremls[[paste0("tom1_",trait,".asr")]]))
-```
-
-#Residuals Model 2
-
-```{r}
-for (trait in traits$trait){
-  postscript(paste0("figures/residual_", trait, ".eps"), width = 6, height = 6)
-  plot(asremls[[paste0("tom2_",trait,".asr")]])
+for (i in 1:nrow(traits)){
+# for (i in 13){
+  abrv <- traits$abrv[i]
+  t <- traits$trait[i]
+  f <- traits$fam[i]
+  j <- traits$mod[i]
+  
+  # pdf(paste0("figures/res_", abrv,".pdf"))
+  postscript(paste0("figures/residual_", t, ".eps"), width = 6, height = 6)
+  # for(j in 1:length(mods)){
+    asr <- paste(abrv, f, sprintf("%02d",j), "tom.asr", sep = "_")
+  
+    asrfam <-switch(traits$fam[i],
+             "asr_gaussian(link = 'identity', dispersion = NA)",
+             "asr_gaussian(link = 'log', dispersion = NA)",
+             "asr_poisson(link = 'identity', dispersion = NA)",
+             "asr_poisson(link = 'log', dispersion = NA)",
+             "asr_poisson(link = 'sqrt', dispersion = NA)")
+    
+    tryCatch({
+    plot(asremls[[asr]]$model)
+        }, error = function(e) {
+          message("Error at trait ", t, ", model ", j, ": ", conditionMessage(e))
+          })
+  # }
   dev.off()
 }
-plot(asremls[[paste0("tom2_",trait,".asr")]])
+# plot(asremls[[asr]]$model)
 ```
 
-#Variograms Model 2
+#Variograms
 
 ```{r}
-for (trait in traits$trait){
-  vario <- varioGram(asremls[[paste0("tom2_",trait,".asr")]])
-  colnames(vario)[1:2] <- c("Line", "Plant N°") 
-  # postscript(paste0("figures/vario_", trait, ".eps"), width = 6, height = 6)
-  plot(vario)
-  # dev.off()
+for (i in 1:nrow(traits)){
+# for (i in 13){
+  abrv <- traits$abrv[i]
+  t <- traits$trait[i]
+  f <- traits$fam[i]
+  j <- traits$mod[i]
+  
+  # pdf(paste0("figures/varioG_", abrv,".pdf"))
+  postscript(paste0("figures/vario_", t, ".eps"), width = 6, height = 6)
+  # for(j in 1:length(mods)){
+  # for(j in 2){
+    asr <- paste(abrv, f, sprintf("%02d",j), "tom.asr", sep = "_")
+    
+    asrfam <-switch(traits$fam[i],
+             "asr_gaussian(link = 'identity', dispersion = NA)",
+             "asr_gaussian(link = 'log', dispersion = NA)",
+             "asr_poisson(link = 'identity', dispersion = NA)",
+             "asr_poisson(link = 'log', dispersion = NA)",
+             "asr_poisson(link = 'sqrt', dispersion = NA)")
+    tryCatch({
+    vario <- varioGram(asremls[[asr]]$model)
+    colnames(vario)[1:2] <- c("Line", "Plant N°")
+    plot(vario)
+        }, error = function(e) {
+          message("Error at trait ", t, ", model ", j, ": ", conditionMessage(e))
+          })
+  # }
+  dev.off()
 } 
-plot(vario)
+# plot(vario)
 ```
-

@@ -16,7 +16,7 @@ df <- df_names
 ## Generations as matrix
 # Identity-by-Desent
 
-PedTable <- df %>% distinct(geno, dam, sire)
+PedTable <- df |> distinct(geno, dam, sire)
 
 Endogamy <- data.frame(
   geno = factor(c("P1F0", "P2F0", "P1F1", "P2F1", "P1F2", "P2F2", #Pre-breeding
