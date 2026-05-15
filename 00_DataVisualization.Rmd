@@ -14,10 +14,10 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(include = FALSE)
 rm(list=ls())
-setwd("~/workspace/GMA_Scripts/")
-load("./MeansTable.RData")
-load("./modelsGLMMs.RData")
-load("./PlotData.RData")
+setwd("~/Workspace/Scripts/GMA_Scripts/")
+load("./data/MeansTable.RData")
+load("./data/modelsGLMMs.RData")
+load("./data/PlotData.RData")
 
 traits <- read.csv("traitsGLMMres.csv", header = TRUE, encoding = "UTF-8")
 
