@@ -389,143 +389,112 @@ gma <- list_rbind(gma_list) |>
   select(abrv, Dataset, parameters, estimates) |>
   pivot_wider(names_from = parameters, values_from = estimates) |>
   mutate(
-    abrv = fct_drop(abrv),
-    Dataset = fct_recode(Dataset, Raw = "rawvar", BLUEs = "predvar"),
-    AA = mhat - ahat,
-    BB = mhat + ahat,
-    AB = mhat + dhat,
+    abrv = fct_drop(toupper(abrv)),
+    dataset = fct_recode(Dataset, Raw = "rawvar", BLUEs = "predvar"),
+    aa = mhat - ahat,
+    bb = mhat + ahat,
+    ab = mhat + dhat,
     pdom = round(abs(dhat / ahat), 3),
     gene_action = factor(
       case_when(
-        pdom < 0.15  ~ "additive",
-        pdom < 0.80  ~ "partial",
-        pdom < 1.25  ~ "complete",
+        pdom < 0.15  ~ "add",
+        pdom < 0.80  ~ "par",
+        pdom < 1.25  ~ "comp",
         pdom >= 1.25 ~ "over"
       ),
-      levels = c("additive", "partial", "complete", "over")
+      levels = c("add", "par", "comp", "over"),
+      labels = c(
+        "Absence of dominance",
+        "Partial dominance",
+        "Complete dominance",
+        "Overdominance"
+      )
     )
   ) |>
-  group_by(abrv) |>
-  mutate(
-    delta = 0.03 * (max(c(AA, BB, AB)) - min(c(AA, BB, AB))),
-    x     = min(c(AA, BB, AB)) - delta,
-    xend  = max(c(AA, BB, AB)) + delta
-  ) |>
-  ungroup() |>
-  select(abrv, dataset = Dataset, gene_action, AA, BB, AB, µ = mhat, x, xend) |>
+  select(abrv, dataset, gene_action, aa, bb, ab, mhat) |>
   pivot_longer(
-    cols = c(AA, BB, AB, µ),
+    cols = c(aa, bb, ab, mhat),
     names_to = "param",
     values_to = "genval"
   ) |>
+  mutate(
+    param = factor(param,
+      levels = c("aa", "bb", "ab", "mhat"),
+      labels = c("AA (µ+a)", "BB (µ-a)", "AB (µ+d)", "(µ)")
+    )
+  ) |> 
   glimpse()
 
 seg_df <- gma |>
-  distinct(abrv, gene_action, x, xend)
+  group_by(abrv) |>
+  mutate(
+    delta = 0.03 * (max(genval) - min(genval)),
+    y     = min(genval) - delta,
+    yend  = max(genval) + delta,
+    y_lab = max(genval) + 2 * delta
+  ) |>
+  ungroup() |>
+  distinct(abrv, dataset, gene_action, y, yend, y_lab) |> 
+  mutate(x = rep(c(-1, 1), n_distinct(abrv)))
 
-dataset_cols <- c(Raw = "#2c7fb8", BLUEs = "#d95f02")
+ga_bg <- c("#e8e2cc", "#d6e2c8", "#d0d4e0", "#d0d4e0", "#e6d0d0")
 
-p <- ggplot(gma, aes(y = abrv)) +
+p <- ggplot(gma, aes(x = dataset, y = genval)) +
   geom_segment(
     data = seg_df,
-    aes(x = x, xend = xend, y = abrv, yend = abrv),
-    arrow = arrow(angle = 90, ends = "both", length = unit(5, "pt")),
-    linewidth = 0.5,
-    colour = "gray30"
+    aes(x = 0, xend = 0, y = y, yend = yend),
+    arrow = arrow(angle = 90, end = "both", length = unit(5, "pt")),
+    linewidth = 1
   ) +
   geom_point(
-    aes(x = genval, colour = dataset),
-    shape = 124,        # vertical bar glyph; reads as a tick mark on the ruler
-    size = 4
+    aes(x = 0, color = dataset),
+    shape = "-",
+    size = 10
   ) +
-  ggrepel::geom_text_repel(
-    data = filter(gma, dataset == "Raw"),
-    aes(x = genval, label = param, colour = dataset),
-    nudge_y = -0.28, direction = "x",
-    size = 3, segment.size = 0.2, segment.color = "gray70",
-    show.legend = FALSE
+  # ggrepel::geom_text_repel(
+  geom_label(
+    data = seg_df,
+    aes(x = x, y = y_lab, label = dataset),
+    hjust = "inward",
+    size = 3.5,
+    check_overlap = TRUE
   ) +
-  ggrepel::geom_text_repel(
-    data = filter(gma, dataset == "BLUEs"),
-    aes(x = genval, label = param, colour = dataset),
-    nudge_y = 0.28, direction = "x",
-    size = 3, segment.size = 0.2, segment.color = "gray70",
-    show.legend = FALSE
-  ) +
-  facet_wrap(~ gene_action, ncol = 1, scales = "free_y") +
-  scale_colour_manual(values = dataset_cols, name = NULL) +
-  scale_x_continuous(expand = expansion(mult = 0.08)) +
-  labs(x = "Genotypic value", y = NULL) +
-  theme_minimal(base_size = 11) +
-  theme(
-    legend.position    = "top",
-    legend.justification = "left",
-    legend.key.width   = unit(22, "pt"),
-    panel.grid.major.y = element_blank(),
-    panel.grid.minor   = element_blank(),
-    panel.grid.major.x = element_line(colour = "gray92"),
-    strip.text         = element_text(face = "bold", hjust = 0),
-    strip.background   = element_blank(),
-    axis.ticks.y       = element_blank(),
-    plot.margin        = margin(8, 12, 8, 8)
-  )
-
-ggsave("./figures/ruler_combined.svg", p,
-       width = 7, height = 9, device = svglite::svglite)
-
-library(ggh4x)   # facet_nested_wrap + strip_themed
-
-gma_plot <- gma |>
-  filter(param %in% c("AA", "AB", "BB")) |>
-  mutate(
-    param   = factor(param, levels = c("AA", "AB", "BB")),
-    dataset = factor(dataset, levels = c("Raw", "BLUEs")),
-    gene_action = factor(
-      gene_action,
-      levels = c("additive", "partial", "complete", "over"),
-      labels = c("Absence of dominance", "Partial dominance",
-                 "Complete dominance",   "Overdominance")
-    )
-  )
-
-genotype_cols  <- c(AA = "#b8442b", AB = "#d4a13a", BB = "#2e6f8e")
-gene_action_bg <- c("#e8e2cc", "#d6e2c8", "#d0d4e0", "#e6d0d0")
-n_traits <- n_distinct(gma_plot$abrv)
-
-p <- ggplot(gma_plot, aes(x = dataset, y = genval, group = param)) +
-  geom_line(linetype = "dashed", colour = "gray70", linewidth = 0.4) +
-  geom_point(
+  geom_text(
     data = ~ filter(.x, dataset == "Raw"),
-    aes(colour = param),
-    shape = 16, size = 2.8
+    aes(x = -1, y = genval, label = param),
+    hjust = "inward",
+    size = 3,
+    check_overlap = TRUE
   ) +
-  geom_point(
+  geom_text(
     data = ~ filter(.x, dataset == "BLUEs"),
-    aes(colour = param),
-    shape = 5, size = 2.8, stroke = 0.9
+    aes(x = 1, y = genval, label = param),
+    hjust = "inward",
+    size = 3,
+    check_overlap = TRUE
   ) +
   ggh4x::facet_nested_wrap(
     vars(gene_action, abrv),
     scales = "free_y",
     nrow   = 2,
-    strip  = strip_themed(
-      background_x = elem_list_rect(
-        fill = c(gene_action_bg, rep("white", n_traits)),
-        colour = c(rep("gray70", 4), rep("gray85", n_traits))
+    strip  = ggh4x::strip_nested(
+      background_x = ggh4x::elem_list_rect(
+        fill = c(ga_bg, rep("white", 14)),
+        colour = c(rep("gray70", 5), rep("gray85", 14))
       ),
-      text_x = elem_list_text(
-        face = c(rep("bold", 4), rep("plain", n_traits)),
-        size = c(rep(10, 4),     rep(9,  n_traits))
+      text_x = ggh4x::elem_list_text(
+        face = c(rep("bold", 5), rep("plain", 14)),
+        size = c(rep(10, 5),     rep(9,  14))
       )
     )
   ) +
-  scale_colour_manual(values = genotype_cols, name = NULL) +
-  scale_x_discrete(position = "top", expand = expansion(add = 0.45)) +
-  guides(colour = guide_legend(override.aes = list(shape = 16, size = 3))) +
-  labs(x = NULL, y = NULL) +
-  theme_minimal(base_size = 10) +
+  labs(
+    y = "Genotypic value",
+    color = "Dataset: "
+  ) +
+  theme_gray() +
   theme(
-    legend.position      = "top",
+    legend.position      = "bottom",
     legend.justification = "left",
     panel.spacing.x      = unit(6,  "pt"),
     panel.spacing.y      = unit(10, "pt"),
@@ -534,67 +503,23 @@ p <- ggplot(gma_plot, aes(x = dataset, y = genval, group = param)) +
     panel.grid.major.y   = element_line(colour = "gray92"),
     panel.border         = element_rect(fill = NA, colour = "gray85"),
     strip.text           = element_text(margin = margin(3, 4, 3, 4)),
-    axis.text.x          = element_text(size = 8, colour = "gray45"),
+    axis.text.x          = element_blank(),
+    axis.ticks.x         = element_blank(),
+    axis.title.x         = element_blank(),
     axis.ticks.y         = element_line(colour = "gray80")
   )
 
-ggsave("./figures/ruler_designE.svg", p,
-       width = 12, height = 8, device = svglite::svglite)
-
-for (i in levels(gma$abrv)){
-
-  trt_df <- gma[gma$abrv == i, ]
-
-  plots <- ggplot() +
-    geom_segment(
-      data = trt_df,
-      aes(x = x, xend = xend, y = 0, yend = 0),
-      arrow = arrow(angle = 90, end = "both", length = unit(8, "pt")),
-      linewidth = 1
-    ) + 
-    geom_point(
-      data = trt_df,
-      aes(x = genval, y = 0, color = dataset),
-      shape = "-",
-      size = 5
-    ) +
-    # ggrepel::geom_text_repel(
-    geom_text(
-      data = trt_df[trt_df$dataset == "Raw",],
-      aes(x = genval, y = -1, label = param),
-      size = 4,
-      check_overlap = TRUE
-    ) +
-    # ggrepel::geom_text_repel(
-    geom_text(
-      data = trt_df[trt_df$dataset == "BLUEs",],
-      aes(x = genval, y = +1, label = param),
-      size = 4,
-      check_overlap = TRUE
-    ) +
-    ylim(-4, 4) +
-    coord_flip() 
-    # theme_minimal() +
-    # theme(
-    #   axis.title.y = element_blank(),
-    #   axis.title.x = element_blank(),
-    #   axis.text.y = element_text(size = 10),
-    #   axis.text.x = element_text(size = 11),
-    #   axis.ticks.y = element_line(color = "gray80"),
-    #   panel.grid.major.y = element_line(color = "gray90"),
-    #   panel.grid.major.x = element_blank(),
-    #   plot.title = element_text(hjust = 0.5)
-    # )
-    
-  svglite::svglite(
-    paste0("./figures/ruler2_", i, ".svg"),
-    width = 3,
-    height = 5
-  )
-  plot(plots) 
-  dev.off()
-
+superplot <- function(p, w, h){
+  plot(p)
+  ggsave("./figures/ruler_designE.pdf", p,
+         width = w, height = h, dpi = 600)
+  ggsave("./figures/ruler_designE.png", p,
+         width = w, height = h, dpi = 600)
+  ggsave("./figures/ruler_designE.svg", p,
+         width = w, height = h, device = svglite::svglite)
 }
+
+superplot(p, 14, 9)
 
 ```
 
