@@ -56,6 +56,9 @@ rsconnect/
 *.RData
 *.Rdata
 
+# .html Quarto files
+*.html
+
 # Figures and Data folders
 figures/
 data/
